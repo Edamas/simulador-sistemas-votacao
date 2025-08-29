@@ -481,9 +481,9 @@ if st.session_state.get('analysis_results_df') is not None:
         col1, col2 = st.columns([1.2, 1])
         with col1:
             st.subheader("Descrição")
-            st.markdown(selected_method_info['Descrição'].replace('\n', '\n\n'))
+            st.markdown(selected_method_info['Descrição'])
             st.subheader("Exemplo Prático")
-            st.markdown(selected_method_info['Exemplo'].replace('\n', '\n\n'))
+            st.markdown(selected_method_info['Exemplo'])
         with col2:
             st.subheader("Prós")
             st.success(selected_method_info['Prós'])
