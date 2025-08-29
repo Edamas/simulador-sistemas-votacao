@@ -48,7 +48,7 @@ def apply_strategic_vote(df, candidates, strategic_prob):
     """Aplica uma estratégia de 'Compromisso' onde eleitores de candidatos fracos promovem sua 2ª opção."""
     if strategic_prob == 0: return df
 
-    strategic_df = df.copy()
+    strategic_df = df.copy() 
     
     honest_counts = df['rank_1'].value_counts(normalize=True)
     weak_threshold = honest_counts.quantile(0.33)
@@ -97,7 +97,7 @@ def run_two_round_runoff(df, candidates, tie_breaker_method):
 def run_irv(df, candidates, tie_breaker_method):
     num_voters = len(df)
     rank_cols = [f'rank_{i+1}' for i in range(len(candidates))]
-    votes_df = df[rank_cols].copy() # MUDANÇA: Copia o DataFrame
+    votes_df = df[rank_cols].copy()
     eliminated_candidates = []
     rounds_summary = []
     for i in range(len(candidates) - 1):
@@ -114,7 +114,7 @@ def run_irv(df, candidates, tie_breaker_method):
         tied_for_last = counts[counts == last_place_votes].index.tolist()
         eliminated = break_tie(tied_for_last, "Aleatório")
         eliminated_candidates.append(eliminated)
-        for idx, row in votes_df.iterrows(): # MUDANÇA: Itera sobre o DataFrame
+        for idx, row in votes_df.iterrows():
             if row['rank_1'] == eliminated:
                 for rank_idx in range(2, len(candidates) + 1):
                     next_best = row.get(f'rank_{rank_idx}')
@@ -292,8 +292,10 @@ with st.sidebar:
 
 # --- Lógica Principal ---
 
-if 'last_analysis_summary' not in st.session_state:
-    st.session_state.last_analysis_summary = None
+# Inicializa o estado da sessão
+if 'analysis_results_df' not in st.session_state:
+    st.session_state.analysis_results_df = None
+    st.session_state.analysis_desc_df = None
     st.session_state.last_example_df = None
     st.session_state.last_example_candidates = None
 
@@ -368,41 +370,87 @@ if run_analysis:
 
     final_df = pd.DataFrame(analysis_results)
     final_df["Rank"] = final_df["Score Final"].rank(ascending=False, method="min").astype(int)
-    final_df = final_df.sort_values("Rank")
+    final_df = final_df.sort_values("Rank").reset_index(drop=True)
+    cols = ["Rank", "Método", "Score Final", "Vence Todos 1x1 (%)", "Elege o com Maior Média (%)", "Elege Quando Há >50% (%)", "Alinhado ao Voto Simples (%)", "Resistente à Estratégia (%)", "Falhas (Empate/Paradoxo) (%)"]
+    final_df = final_df[cols]
 
-    # Metadados dos métodos de votação
     methods_metadata = {
-        "Pluralidade": {"Descrição": "O candidato com mais votos de 1ª preferência vence. Simples, mas vulnerável ao 'voto útil'.", "Prós": "Simples, fácil de entender e implementar.", "Contras": "Pode eleger um candidato impopular, incentiva o voto útil, não reflete a intensidade da preferência.", "Quando Usar": "Eleições rápidas, pequenas comunidades, onde a simplicidade é primordial.", "Turnos": "1"},
-        "Dois Turnos (Runoff)": {"Descrição": "Se ninguém tem maioria no 1º turno, os 2 mais votados vão para um 2º turno. Garante maioria.", "Prós": "Garante que o vencedor tenha apoio da maioria absoluta, reduz o voto útil.", "Contras": "Mais caro e demorado, pode eliminar candidatos populares no 1º turno.", "Quando Usar": "Eleições presidenciais, prefeituras, onde a legitimidade da maioria é crucial.", "Turnos": "2"},
-        "Voto Ranqueado (IRV)": {"Descrição": "Eleitores ranqueiam os candidatos. O menos votado é eliminado e seus votos são redistribuídos até um candidato ter maioria.", "Prós": "Garante maioria, reduz o voto útil, elege candidatos de consenso.", "Contras": "Complexo para eleitores e apuração, pode ter resultados contraintuitivos.", "Quando Usar": "Eleições parlamentares, internas de partidos, onde a representatividade é valorizada.", "Turnos": "Variável"},
-        "Voto por Aprovação": {"Descrição": "Eleitores podem 'aprovar' (votar em) quantos candidatos quiserem (preferência > 0.5). O mais aprovado vence.", "Prós": "Simples, expressa apoio amplo, reduz o voto útil, elege candidatos de consenso.", "Contras": "Não reflete a ordem de preferência, pode ser manipulado por 'bullet voting'.", "Quando Usar": "Eleições internas, conselhos, onde a aceitação geral é importante.", "Turnos": "1"},
-        "Voto por Pontuação": {"Descrição": "Eleitores dão uma nota (0 a 10) a cada candidato. O de maior nota média vence.", "Prós": "Expressa intensidade da preferência, elege candidatos de consenso, resistente a manipulação.", "Contras": "Pode ser complexo, vulnerável a 'burying' (rebaixamento estratégico).", "Quando Usar": "Pesquisas de opinião, avaliações, onde a intensidade da opinião é relevante.", "Turnos": "1"},
-        "Contagem de Borda": {"Descrição": "Candidatos recebem pontos baseados em sua posição no ranking de cada eleitor. Tende a eleger candidatos de consenso.", "Prós": "Elege candidatos de consenso, reflete o ranking completo, menos polarizador.", "Contras": "Vulnerável a manipulação (rebaixamento estratégico), pode não eleger o vencedor Condorcet.", "Quando Usar": "Eleições em grupos pequenos, comitês, onde o consenso é valorizado.", "Turnos": "1"},
-        "Voto Contingente": {"Descrição": "Versão simplificada do IRV. Se ninguém tem maioria, apenas os 2 primeiros sobrevivem e recebem os votos dos eliminados.", "Prós": "Mais simples que IRV, garante maioria, reduz o voto útil.", "Contras": "Pode eliminar candidatos populares no 1º turno, menos preciso que IRV.", "Quando Usar": "Eleições onde a simplicidade e a maioria são importantes, mas IRV é muito complexo.", "Turnos": "2"},
-        "Condorcet": {"Descrição": "O vencedor é aquele que venceria todos os outros em confrontos diretos (um-contra-um).", "Prós": "Considerado o mais 'justo' e reflete a vontade da maioria em duelos diretos.", "Contras": "Pode não haver um vencedor (paradoxo), complexo para eleitores e apuração.", "Quando Usar": "Análise teórica, como benchmark para outros sistemas.", "Turnos": "Variável (duelos)"},
-        "Método de Copeland": {"Descrição": "Solução para o paradoxo de Condorcet. O vencedor é o que vence mais confrontos diretos.", "Prós": "Sempre produz um vencedor, baseado no critério Condorcet.", "Contras": "Complexo, pode não ser intuitivo, ainda pode ter empates.", "Quando Usar": "Quando um vencedor Condorcet é desejado, mas a garantia de um resultado é necessária.", "Turnos": "Variável (duelos)"},
-        "Anti-Pluralidade": {"Descrição": "Eleitores votam no candidato que *menos* querem. O com menos votos 'contra' vence.", "Prós": "Simples, pode evitar a eleição de candidatos amplamente rejeitados.", "Contras": "Não reflete a preferência positiva, pode ser contraintuitivo.", "Quando Usar": "Análise teórica, para ilustrar o voto de rejeição.", "Turnos": "1"}
+        "Pluralidade": {
+            "Descrição": "Também conhecido como 'First-Past-the-Post', é o sistema mais simples. Cada eleitor escolhe **apenas um** candidato, e o que tiver mais votos vence, mesmo sem maioria absoluta.",
+            "Exemplo": "Numa eleição com 100 eleitores para os candidatos A, B e C:\n- A recebe 40 votos.\n- B recebe 35 votos.\n- C recebe 25 votos.\n**Resultado:** A vence com 40% dos votos, embora 60% dos eleitores preferissem outro candidato.",
+            "Prós": "Simples de entender e apurar.",
+            "Contras": "Incentiva o 'voto útil' e pode eleger um candidato que a maioria rejeita."
+        },
+        "Dois Turnos (Runoff)": {
+            "Descrição": "Se nenhum candidato atinge a maioria absoluta (>50%) no primeiro turno, os **dois mais votados** avançam para um segundo turno. Isso garante que o vencedor tenha o apoio da maioria.",
+            "Exemplo": "Eleição com 100 eleitores (A, B, C):\n- **1º Turno:** A (40), B (35), C (25).\n- Ninguém tem >50%, então A e B vão para o 2º turno.\n- **2º Turno:** Os eleitores de C agora votam em A ou B. Se a maioria deles preferir B, o resultado pode ser B (35+15=50) vs A (40+10=50), levando a um empate, ou um deles vencer.",
+            "Prós": "Garante um vencedor com maioria absoluta, dando-lhe mais legitimidade.",
+            "Contras": "Mais caro e demorado. Candidatos de consenso, mas menos populares, podem ser eliminados no 1º turno."
+        },
+        "Voto Ranqueado (IRV)": {
+            "Descrição": "Os eleitores **ranqueiam** os candidatos em ordem de preferência. Se ninguém tem maioria, o candidato com menos votos de 1ª preferência é eliminado. Seus votos são redistribuídos para a próxima preferência de cada eleitor. O processo se repete até um candidato ter maioria.",
+            "Exemplo": "100 eleitores (A, B, C):\n- **Rodada 1:** A (40), B (35), C (25). C é eliminado.\n- **Rodada 2:** Os 25 votos de C são transferidos. Se 15 deles tinham B como 2ª opção e 10 tinham A:\n  - A: 40 + 10 = 50\n  - B: 35 + 15 = 50\n**Resultado:** Empate entre A e B. O IRV busca um vencedor de consenso.",
+            "Prós": "Reduz o 'voto útil' e permite que eleitores votem em quem realmente preferem. Elege vencedores de maior consenso.",
+            "Contras": "Apuração complexa e pode ter resultados não intuitivos (ex: um candidato pode vencer mesmo que outro fosse preferido contra ele em um confronto direto)."
+        },
+        "Voto por Aprovação": {
+            "Descrição": "Eleitores podem votar em (ou 'aprovar') **quantos candidatos quiserem**. O candidato com o maior número de aprovações vence. É como uma eleição de múltipla escolha.",
+            "Exemplo": "Numa eleição com 3 eleitores:\n- Eleitor 1 aprova A e B.\n- Eleitor 2 aprova B.\n- Eleitor 3 aprova A, B e C.\n**Resultado:** A (2 votos), B (3 votos), C (1 voto). B vence.",
+            "Prós": "Simples, expressa apoio amplo e tende a eleger candidatos de menor rejeição.",
+            "Contras": "Não permite expressar uma ordem de preferência. Um eleitor que aprova seu favorito e um candidato 'aceitável' dá o mesmo peso a ambos."
+        },
+        "Voto por Pontuação": {
+            "Descrição": "Eleitores dão uma **nota** (ex: 0 a 10) para cada candidato. O candidato com a maior nota média (ou soma total) vence. Permite expressar a intensidade da preferência.",
+            "Exemplo": "2 eleitores, 3 candidatos (notas de 0 a 5):\n- Eleitor 1: A(5), B(1), C(0).\n- Eleitor 2: A(2), B(5), C(4).\n**Resultado:** Soma A=7, B=6, C=4. A vence.",
+            "Prós": "Captura a intensidade da preferência e promove candidatos de alto consenso.",
+            "Contras": "Vulnerável a estratégias de 'rebaixamento', onde eleitores dão nota mínima a concorrentes fortes para ajudar seu favorito."
+        },
+        "Contagem de Borda": {
+            "Descrição": "Eleitores ranqueiam os candidatos. Cada posição no ranking vale pontos (ex: 1º lugar = N-1 pontos, 2º = N-2, etc., onde N é o nº de candidatos). O candidato com mais pontos vence.",
+            "Exemplo": "3 candidatos (A,B,C). 1º=2pts, 2º=1pt, 3º=0pts. 5 eleitores:\n- 3 eleitores: (A > B > C) -> A: 3*2=6, B: 3*1=3\n- 2 eleitores: (B > C > A) -> B: 2*2=4, C: 2*1=2\n**Resultado:** A=6, B=7, C=2. B vence, pois foi bem ranqueado por todos.",
+            "Prós": "Elege candidatos de consenso, que podem não ser o favorito da maioria, mas são amplamente aceitáveis.",
+            "Contras": "Vulnerável à clonagem de candidatos (candidatos semelhantes podem dividir os pontos de um oponente forte) e ao 'rebaixamento' estratégico."
+        },
+        "Voto Contingente": {
+            "Descrição": "Uma versão simplificada do IRV. Se ninguém tem maioria, **todos os candidatos são eliminados, exceto os dois primeiros**. Os votos dos eleitores dos candidatos eliminados são então transferidos para um dos dois finalistas, conforme a preferência.",
+            "Exemplo": "100 eleitores (A, B, C, D):\n- **1º Turno:** A(35), B(30), C(20), D(15). Ninguém tem >50%.
+- **Contingência:** A e B avançam. Os votos de C e D são transferidos para A ou B. Se a maioria dos eleitores de C e D preferem B a A, B pode vencer.",
+            "Prós": "Mais simples que o IRV, mas ainda garante um vencedor com maioria.",
+            "Contras": "Pode eliminar um 'candidato de consenso' no primeiro turno (ex: um candidato que seria a 2ª opção de todos)."
+        },
+        "Condorcet": {
+            "Descrição": "Um método teórico que define o vencedor 'ideal'. O vencedor Condorcet é o candidato que, em **confrontos diretos (um-contra-um)**, venceria todos os outros candidatos.",
+            "Exemplo": "Candidatos A, B, C. A maioria prefere A a B, A a C, e B a C.\n- A vs B -> A vence.\n- A vs C -> A vence.\n- B vs C -> B vence.\n**Resultado:** A é o vencedor Condorcet.",
+            "Prós": "Considerado o critério mais 'justo' de uma eleição.",
+            "Contras": "Pode não haver um vencedor (Paradoxo de Condorcet, ex: A>B, B>C, C>A), tornando-o mais um critério de avaliação do que um método prático."
+        },
+        "Método de Copeland": {
+            "Descrição": "Uma forma de encontrar um vencedor usando o critério Condorcet. O vencedor é o candidato que **vence o maior número de confrontos diretos** (um-contra-um).",
+            "Exemplo": "A vs B (A vence), A vs C (A vence), B vs C (B vence).\n- **Placar:** A (2 vitórias), B (1 vitória), C (0 vitórias).\n**Resultado:** A vence.",
+            "Prós": "Sempre produz um resultado e é baseado no 'justo' critério Condorcet.",
+            "Contras": "Pode resultar em empates e a apuração é complexa."
+        },
+        "Anti-Pluralidade": {
+            "Descrição": "Também conhecido como 'Voto de Rejeição'. Cada eleitor vota no candidato que **menos** deseja. O candidato com o menor número de votos 'contra' é o vencedor.",
+            "Exemplo": "100 eleitores votam para rejeitar A, B ou C:\n- A recebe 10 votos 'contra'.\n- B recebe 30 votos 'contra'.\n- C recebe 60 votos 'contra'.\n**Resultado:** A vence, por ser o menos rejeitado.",
+            "Prós": "Simples e eficaz para evitar a eleição de um candidato amplamente impopular.",
+            "Contras": "Não expressa preferência positiva e pode eleger um candidato que poucos realmente apoiam."
+        }
     }
     desc_df = pd.DataFrame.from_dict(methods_metadata, orient='index')
     desc_df.index.name = "Método"
     desc_df = desc_df.reset_index()
 
-    # Combina os resultados com as descrições
-    merged_df = pd.merge(final_df, desc_df, on="Método")
-    
-    # Reordena as colunas
-    cols = ["Rank", "Método", "Score Final", "Vence Todos 1x1 (%)", "Elege o com Maior Média (%)", "Elege Quando Há >50% (%)", "Alinhado ao Voto Simples (%)", "Resistente à Estratégia (%)", "Falhas (Empate/Paradoxo) (%)"]
-    desc_cols = ["Descrição", "Prós", "Contras", "Quando Usar", "Turnos"]
-    merged_df = merged_df[cols + desc_cols]
-
-    st.session_state.last_analysis_summary = merged_df
+    st.session_state.analysis_results_df = final_df
+    st.session_state.analysis_desc_df = desc_df
     st.session_state.last_example_df = last_run_df
     st.session_state.last_example_candidates = last_run_candidates
 
-if st.session_state.last_analysis_summary is not None:
-    st.info("A tabela classifica os sistemas por um 'Score Final'. Clique em uma linha para ver a análise detalhada de um cenário da última simulação.")
+if st.session_state.get('analysis_results_df') is not None:
+    st.info("A tabela abaixo classifica os sistemas por um 'Score Final'. **Clique em uma linha** para ver a descrição detalhada e a análise do sistema selecionado.")
     
-    summary_df = st.session_state.last_analysis_summary
+    results_df = st.session_state.analysis_results_df
+    desc_df = st.session_state.analysis_desc_df
     
     formatter = {
         "Score Final": "{:.1f}", "Vence Todos 1x1 (%)": "{:.1f}%", "Elege o com Maior Média (%)": "{:.1f}%",
@@ -410,9 +458,8 @@ if st.session_state.last_analysis_summary is not None:
         "Resistente à Estratégia (%)": "{:.1f}%", "Falhas (Empate/Paradoxo) (%)": "{:.1f}%"
     }
     
-    # DataFrame interativo principal
-    selected_rows = st.dataframe(
-        summary_df.style.format(formatter).bar(subset=["Score Final"], vmin=0, vmax=100, color='#5fba7d'),
+    selection = st.dataframe(
+        results_df.style.format(formatter).bar(subset=["Score Final"], vmin=0, vmax=100, color='#5fba7d'),
         on_select='rerun',
         selection_mode='single-row',
         hide_index=True,
@@ -420,17 +467,34 @@ if st.session_state.last_analysis_summary is not None:
         key='system_selector'
     )
     
+    selected_method_name = results_df.iloc[0]['Método']
+    if selection['selection']['rows']:
+        selected_index = selection['selection']['rows'][0]
+        selected_method_name = results_df.loc[selected_index, 'Método']
+
     st.markdown("---")
-    st.header("Análise Detalhada da Última Simulação")
-    st.warning("Os dados abaixo são da **última** simulação executada. Use a tabela acima para selecionar um sistema e ver os detalhes.")
+    
+    selected_method_info = desc_df[desc_df['Método'] == selected_method_name].iloc[0]
+    
+    with st.container(border=True):
+        st.header(f"Como funciona: {selected_method_name}")
+        col1, col2 = st.columns([1.2, 1])
+        with col1:
+            st.subheader("Descrição")
+            st.markdown(selected_method_info['Descrição'].replace('\n', '\n\n'))
+            st.subheader("Exemplo Prático")
+            st.markdown(selected_method_info['Exemplo'].replace('\n', '\n\n'))
+        with col2:
+            st.subheader("Prós")
+            st.success(selected_method_info['Prós'])
+            st.subheader("Contras")
+            st.error(selected_method_info['Contras'])
 
-    # Lógica de seleção
-    example_method_name = summary_df.iloc[0]['Método'] # Default para o primeiro do rank
-    if selected_rows and selected_rows['selection']['rows']:
-        selected_index = selected_rows['selection']['rows'][0]
-        example_method_name = summary_df.loc[selected_index, 'Método']
+    st.markdown("---")
+    st.header(f"Análise da Última Simulação para '{selected_method_name}'")
+    st.warning("Os dados abaixo são da **última** simulação executada, aplicando o sistema selecionado acima.")
 
-    example_voting_func = methods_to_analyze[example_method_name]
+    example_voting_func = methods_to_analyze[selected_method_name]
     
     example_df = st.session_state.last_example_df
     example_candidates = st.session_state.last_example_candidates
@@ -478,11 +542,11 @@ if st.session_state.last_analysis_summary is not None:
             else:
                 st.warning(f"Estratégia alterou: {honest_winner} ➡️ {strategic_winner}")
         st.text("Detalhes da Votação:")
-        if example_method_name == "Voto Ranqueado (IRV)":
+        if selected_method_name == "Voto Ranqueado (IRV)":
             for i, round_counts in enumerate(results):
                 st.text(f"Rodada {i+1}:")
                 st.dataframe(round_counts, use_container_width=True)
-        elif example_method_name in ["Dois Turnos (Runoff)", "Voto Contingente"]:
+        elif selected_method_name in ["Dois Turnos (Runoff)", "Voto Contingente"]:
             if "Resultado Final" in results:
                 st.text("Preferências de 1º Turno:")
                 st.dataframe(results["Turno 1"], use_container_width=True)
