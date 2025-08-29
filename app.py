@@ -48,7 +48,7 @@ def apply_strategic_vote(df, candidates, strategic_prob):
     """Aplica uma estratégia de 'Compromisso' onde eleitores de candidatos fracos promovem sua 2ª opção."""
     if strategic_prob == 0: return df
 
-    strategic_df = df.copy() 
+    strategic_df = df.copy()
     
     honest_counts = df['rank_1'].value_counts(normalize=True)
     weak_threshold = honest_counts.quantile(0.33)
@@ -179,7 +179,7 @@ def run_condorcet(df, candidates, tie_breaker_method):
     for candidate, num_wins in wins.items():
         if num_wins == len(candidates) - 1:
             return candidate, pd.Series(wins), False, df['rank_1']
-    winner = break_tie([], tie_breaker_method) # Paradox is a failure, not a tie to break
+    winner = break_tie([], tie_breaker_method)
     return winner, pd.Series(wins), True, df['rank_1']
 
 def run_copeland(df, candidates, tie_breaker_method):
@@ -201,16 +201,15 @@ def run_contingent(df, candidates, tie_breaker_method):
         return winner, {"Turno 1": counts_r1}, len(tied) > 1, df['rank_1']
     top_2 = counts_r1.index[:2].tolist()
     if len(top_2) < 2: return counts_r1.index[0], {"Turno 1": counts_r1}, False, df['rank_1']
-    contingent_votes_series = df['rank_1'].copy() # MUDANÇA: Usa Series
+    contingent_votes_series = df['rank_1'].copy()
     eliminated_voters = contingent_votes_series[~contingent_votes_series.isin(top_2)].index
     for idx in eliminated_voters:
-        # MUDANÇA: Acessa diretamente a Series
         if df.loc[idx, f'pref_{top_2[0]}'] > df.loc[idx, f'pref_{top_2[1]}']:
             contingent_votes_series.loc[idx] = top_2[0]
         else:
             contingent_votes_series.loc[idx] = top_2[1]
     final_counts = contingent_votes_series.value_counts()
-    if final_counts.empty: # MUDANÇA: Trata caso de final_counts vazio
+    if final_counts.empty:
         return "Anulada", {"Turno 1": counts_r1, "Resultado Final": final_counts}, True, contingent_votes_series
     max_final_votes = final_counts.max()
     tied_final = final_counts[final_counts == max_final_votes].index.tolist()
